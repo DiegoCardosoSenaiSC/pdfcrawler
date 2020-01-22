@@ -1,65 +1,90 @@
 var Crawler = require("crawler");
-var { exec } = require("child_process");
+const db = require("./db");
+const { validKeywords } = require("./defines");
+const { cmdexec } = require("./utils");
 
-var c = new Crawler({
-  maxConnections: 10,
-  callback: function(error, res, done) {
-    if (error) {
-      console.log(error);
-    } else {
-      var $ = res.$;
-      console.log($("title").text());
-    }
-    done();
-  }
-});
+(async () => {
+  await db.connect();
 
-c.queue([
-  {
-    uri: "https://www.google.com/search?q=animals%2Bpdf",
-    jQuery: true,
-    callback: async function(error, res, done) {
+  var executor = new Crawler({
+    maxConnections: 10,
+    callback: function(error, res, done) {
       if (error) {
         console.log(error);
       } else {
-        await findhref(res);
-        const files = await promesify(
-          "for f in $(ls pdfout); do echo $f; done"
-        );
-        for (f of files.split("\n")) {
-          let found = await promesify(
-            `pdftotext pdfout/${f} - | grep -i 'rabbit'`
-          );
-          console.log(`${f}: ${found ? "" : "not "}found`);
-        }
+        var $ = res.$;
+        console.log($("title").text());
       }
       done();
     }
+  });
+
+  function collect(url, provider) {
+    executor.queue([
+      {
+        uri: url,
+        jQuery: true,
+        callback: async (error, res, done) => {
+          if (error) {
+            console.log(error);
+            done();
+          }
+
+          const urls = await findhref(res, provider);
+          const files = await cmdexec("ls pdfout/" + provider);
+
+          for (f of files) {
+            if (f.length) {
+              let found = await cmdexec(
+                `pdftotext pdfout/${provider}/'${f}' - | grep -i -E '${validKeywords.join(
+                  "|"
+                )}'`
+              );
+              if (found) {
+                db.insertFileRef({
+                  name: f,
+                  url: urls[urls.findIndex(el => decodeURI(el).indexOf(f) > 0)],
+                  from: provider,
+                  timestamp: Date.now()
+                });
+              }
+              // console.log(`${f}: ${found ? "" : "not "}found`);
+            }
+          }
+          done();
+        }
+      }
+    ]);
   }
-]);
 
-function promesify(cmd) {
-  return new Promise(res => {
-    exec(cmd, function(x, z) {
-      res(z);
-    });
-  });
-}
+  collect(
+    "https://www.google.com.br/search?q=animals+exercices%2Bpdf",
+    "google"
+  );
 
-function findhref(response) {
-  return new Promise(res => {
-    const $ = response.$;
-    const target = $("a"),
-      qty = target.length;
-    target.each(async (idx, el) => {
-      var href = $(el).attr("href");
-      const [i, link] = href.match(/url\?q=(.*\.pdf)/) || [,];
-      if (link) {
-        await promesify("wget -nc -P pdfout " + link);
-      }
-      if (idx === qty - 1) {
-        res();
-      }
+  function findhref(response, provider) {
+    return new Promise(res => {
+      var links = [];
+      const $ = response.$;
+      const target = $("a");
+
+      target.each((_, el) => {
+        let href = $(el).attr("href");
+        const [, link] = href.match(/url\?q=(.*\.pdf)/) || [,];
+        if (link) {
+          links.push(decodeURI(link));
+        }
+      });
+
+      var qty = links.length,
+        count = 0;
+      links.forEach(async link => {
+        await cmdexec("wget -nc -P pdfout/" + provider + " " + link);
+        count++;
+        if (count === qty) {
+          res(links);
+        }
+      });
     });
-  });
-}
+  }
+})();
