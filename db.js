@@ -16,7 +16,7 @@ const connect = () => {
 };
 
 const insertFileRef = ({ url, name, from, timestamp }) => {
-  mongo("files").insertOne({
+  return mongo("files").insertOne({
     url,
     name,
     from,
@@ -25,14 +25,14 @@ const insertFileRef = ({ url, name, from, timestamp }) => {
 };
 
 const insertUser = ({ email, keywords }) => {
-  mongo("users").insertOne({
+  return mongo("users").insertOne({
     email,
     keywords
   });
 };
 
 const insertFound = ({ userID, files, notified }) => {
-  mongo("found").insertOne({
+  return mongo("found").insertOne({
     userID,
     files,
     notified

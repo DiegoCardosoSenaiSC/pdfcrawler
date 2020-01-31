@@ -2,6 +2,7 @@ var Crawler = require("crawler");
 const db = require("./db");
 const { validKeywords } = require("./defines");
 const { cmdexec } = require("./utils");
+const process = require("process");
 
 (async () => {
   await db.connect();
@@ -52,6 +53,7 @@ const { cmdexec } = require("./utils");
             }
           }
           done();
+          process.exit(0);
         }
       }
     ]);
@@ -70,7 +72,7 @@ const { cmdexec } = require("./utils");
 
       target.each((_, el) => {
         let href = $(el).attr("href");
-        const [, link] = href.match(/url\?q=(.*\.pdf)/) || [,];
+        const [, link] = href.match(/(.*\.pdf)/) || [,];
         if (link) {
           links.push(decodeURI(link));
         }
